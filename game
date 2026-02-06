@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 WBC Manager (Final UI)</title>
+    <style>
+        :root { 
+            --bg: #0f172a; --panel: #1e293b; --border: #334155; 
+            --text: #f1f5f9; --muted: #94a3b8;
+            --accent: #fbbf24; --primary: #38bdf8;
+            --success: #34d399; --danger: #f87171; 
+            
+            /* 燈號顏色定義 */
+            --light-ball: #22c55e;   /* 綠 */
+            --light-strike: #facc15; /* 黃 */
+            --light-out: #ef4444;    /* 紅 */
+        }
+        * { box-sizing: border-box; user-select: none; }
+        
+        body { 
+            background: radial-gradient(circle at center, #111827 0%, #0f172a 100%); 
+            color: var(--text); font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; 
+            margin: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; 
+        }
+
+        /* --- Header --- */
+        header { 
+            height: 50px; background: rgba(15, 23, 42, 0.95); border-bottom: 2px solid var(--accent); 
+            display: flex; align-items: center; padding: 0 20px; justify-content: space-between; flex-shrink: 0; z-index: 20;
+        }
+        h1 { font-size: 1.1rem; margin: 0; font-weight: 800; letter-spacing: 1px; color: #fff; }
+        .date-badge { font-family: monospace; color: var(--primary); font-weight: bold; font-size: 1rem; }
+
+        /* --- 部署層 --- */
+        #setup-layer { flex: 1; display: grid; grid-template-columns: 280px 1fr 320px; gap: 15px; padding: 15px; overflow: hidden; }
+
+        .panel { 
+            background: rgba(30, 41, 59, 0.6); border: 1px solid var(--border); border-radius: 12px; 
+            display: flex; flex-direction: column; overflow: hidden; backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        }
+        .panel-head { 
+            padding: 12px 15px; background: rgba(0,0,0,0.4); border-bottom: 1px solid var(--border); 
+            font-weight: bold; font-size: 0.9rem; color: var(--muted);
+            display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+        }
+        .panel-body { padding: 10px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; position: relative; }
+
+        /* 左欄 */
+        .rank-table { width: 100%; font-size: 0.85rem; border-collapse: collapse; margin-bottom: 10px; }
+        .rank-table th { text-align: left; color: var(--primary); border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+        .rank-table td { padding: 6px 2px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .match-card { 
+            padding: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); 
+            border-radius: 6px; font-size: 0.85rem; display: flex; justify-content: space-between; margin-bottom: 5px;
+        }
+        .match-card.active { border-color: var(--accent); background: rgba(251, 191, 36, 0.1); }
+        .match-card.done { opacity: 0.5; }
+
+        /* 中欄：動畫與統一卡片 */
+        .roster-container { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        
+        .pitcher-section {
+            flex-shrink: 0; display: flex; flex-direction: column;
+            border-bottom: 1px solid var(--border);
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+            overflow: hidden; max-height: 400px;
+        }
+        .pitcher-section.collapsed { max-height: 45px; border-bottom: 2px solid var(--success); }
+        
+        .sec-header {
+            padding: 10px 15px; background: rgba(0,0,0,0.3); font-size: 0.85rem; font-weight: bold; 
+            color: var(--text); cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+        }
+        .sec-header:hover { background: rgba(255,255,255,0.05); }
+        
+        .grid-area { padding: 10px; overflow-y: auto; }
+        .common-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+
+        .u-card {
+            background: linear-gradient(145deg, #2a2a2a, #202020); 
+            border: 1px solid var(--border); border-radius: 6px; 
+            padding: 8px; cursor: pointer; position: relative; 
+            display: flex; flex-direction: column; justify-content: center; min-height: 75px;
+            transition: all 0.2s;
+        }
+        .u-card:hover { transform: translateY(-2px); border-color: var(--text); box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .u-card.selected { border-color: var(--accent); background: #3d3300; } 
+        .u-card.picked { border-color: var(--primary); background: #0c4a6e; }
+        .u-card.disabled { opacity: 0.3; pointer-events: none; filter: grayscale(1); }
+
+        .uc-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .uc-pos { font-size: 0.7rem; padding: 1px 5px; border-radius: 3px; font-weight: bold; background: #000; color: #fff; }
+        .pos-p { color: var(--accent); } .pos-inf { color: #38bdf8; } .pos-out { color: #4ade80; } .pos-cat { color: #f472b6; }
+        
+        .uc-name { font-weight: 800; font-size: 0.95rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .uc-stat { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+        .uc-stat b { color: var(--text); }
+
+        .batter-section { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: rgba(0,0,0,0.1); }
+
+        /* 右欄：名單 */
+        .lineup-list { display: flex; flex-direction: column; gap: 5px; flex: 1; overflow-y: auto; }
+        .slot { 
+            display: flex; align-items: center; background: rgba(255,255,255,0.03); 
+            border: 1px solid var(--border); height: 52px; padding: 0 10px; border-radius: 6px; 
+            transition: 0.2s;
+        }
+        .slot.empty { border: 1px dashed #444; opacity: 0.6; }
+        .slot.filled { border-left: 4px solid var(--primary); background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.3); }
+
+        .slot-idx { width: 25px; font-family: monospace; color: var(--muted); font-weight: bold; font-size: 1.1rem; }
+        .slot-info { flex: 1; display: flex; justify-content: space-between; align-items: center; }
+        .slot-name { font-weight: bold; color: #fff; font-size: 0.95rem; cursor: pointer; }
+        .slot-name:hover { color: var(--danger); text-decoration: line-through; }
+        
+        .pos-sel { 
+            background: #0f172a; color: var(--accent); border: 1px solid var(--border); 
+            padding: 4px; width: 65px; text-align: center; border-radius: 4px; font-weight: bold; cursor: pointer;
+        }
+
+        .action-area { padding: 15px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.2); text-align: center; }
+        .go-btn { 
+            width: 100%; padding: 12px; background: var(--success); color: #000; 
+            border: none; font-weight: 900; cursor: pointer; border-radius: 6px; font-size: 1.1rem; 
+            box-shadow: 0 4px 15px rgba(52, 211, 153, 0.3); transition: 0.2s;
+        }
+        .go-btn:hover { transform: translateY(-2px); }
+        .go-btn:disabled { background: #334155; color: #64748b; cursor: not-allowed; box-shadow: none; transform: none; }
+
+        /* --- 比賽畫面 --- */
+        #game-layer { display: none; height: 100%; flex-direction: column; background: #000; }
+        
+        .top-bar { 
+            height: 60px; background: #020617; border-bottom: 2px solid #333; 
+            display: flex; justify-content: center; align-items: center; gap: 30px; flex-shrink: 0;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .score-box { font-size: 2.2rem; font-weight: 900; width: 60px; text-align: center; font-family: 'Segoe UI', monospace; color: white; }
+        .team-label { font-size: 1.5rem; font-weight: 900; width: 80px; text-align: center; }
+        
+        #stadium-layout { flex: 1; display: grid; grid-template-columns: 260px 1fr 260px; gap: 0; overflow: hidden; }
+        
+        .side-col { background: #1e293b; border-right: 1px solid #333; border-left: 1px solid #333; display: flex; flex-direction: column; }
+        .side-head { padding: 10px; background: #111; color: #aaa; text-align: center; font-weight: bold; border-bottom: 1px solid #333; }
+        .roster-list { flex: 1; overflow-y: auto; padding: 0; margin: 0; list-style: none; }
+        .r-item { padding: 8px 12px; border-bottom: 1px solid #333; font-size: 0.9rem; display: flex; justify-content: space-between; color: #ccc; }
+        .r-item.active { background: rgba(255,255,255,0.1); color: #fff; font-weight: bold; border-left: 3px solid var(--primary); }
+
+        .field-area { 
+            background: radial-gradient(circle at 50% 60%, #1e824c 0%, #064e3b 80%, #022c22 100%); 
+            position: relative; flex: 1; border-left: 2px solid #000; border-right: 2px solid #000;
+        }
+        
+        .base { width: 45px; height: 45px; background: rgba(255,255,255,0.4); border: 3px solid #fff; position: absolute; transform: rotate(45deg); transition: 0.2s; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        .base.on { background: var(--accent); border-color: #fff; box-shadow: 0 0 20px var(--accent); }
+        #b1 { right: 24%; top: 50%; } #b2 { left: 50%; top: 24%; transform: translateX(-50%) rotate(45deg); } #b3 { left: 24%; top: 50%; }
+
+        /* 調整後的燈號計分板 (正中央上方) */
+        .count-board { 
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.85); padding: 8px 25px; border-radius: 12px; 
+            border: 2px solid #555; display: flex; gap: 20px; align-items: center;
+            box-shadow: 0 0 20px rgba(0,0,0,0.7); z-index: 5;
+        }
+        
+        .light-group { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .light-row { display: flex; gap: 6px; }
+        .bulb { width: 14px; height: 14px; border-radius: 50%; background: #333; border: 1px solid #666; transition: 0.2s; }
+        
+        /* 燈號顏色 (修復版) */
+        .bulb.green { background: var(--light-ball); box-shadow: 0 0 10px var(--light-ball); border-color: #fff; }
+        .bulb.yellow { background: var(--light-strike); box-shadow: 0 0 10px var(--light-strike); border-color: #fff; }
+        .bulb.red { background: var(--light-out); box-shadow: 0 0 10px var(--light-out); border-color: #fff; }
+        
+        .count-label { font-size: 0.75rem; color: #aaa; font-weight: bold; }
+        .pitch-count-display { font-family: monospace; font-size: 1.2rem; color: #fff; border-left: 1px solid #666; padding-left: 15px; margin-left: 5px; }
+
+        .duel-hud { 
+            position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 20px; 
+        }
+        .hud-card { 
+            background: rgba(15, 23, 42, 0.9); border: 1px solid #555; padding: 10px 20px; border-radius: 12px; width: 240px;
+            backdrop-filter: blur(5px); box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+        }
+        .hud-lbl { font-size: 0.7rem; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        .hud-val { font-size: 1.1rem; color: #fff; font-weight: bold; margin: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .hud-stat { font-size: 0.8rem; color: var(--accent); }
+        .last-ab { font-size: 0.75rem; color: var(--success); margin-top: 3px; font-weight: bold; height: 1.2em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .log-area { 
+            height: 140px; background: #020617; border-top: 2px solid #333; 
+            padding: 10px; font-family: 'Consolas', monospace; font-size: 0.9rem; overflow-y: scroll; flex-shrink: 0; color: #ccc;
+        }
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px; }
+        .log-new { color: var(--accent); font-weight: bold; }
+        .log-out { color: #94a3b8; }
+        
+        .controls { height: 60px; display: flex; background: #0f172a; flex-shrink: 0; border-top: 1px solid #333; }
+        .c-btn { 
+            flex: 1; border: none; background: transparent; color: var(--muted); font-weight: bold; 
+            border-right: 1px solid #333; cursor: pointer; transition: 0.2s; font-size: 1rem; text-transform: uppercase; 
+        }
+        .c-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
+        .c-btn strong { display: block; font-size: 0.75rem; color: var(--primary); margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>2026 WBC <span>Manager</span></h1>
+    <div class="date-badge" id="date-disp">Day 1</div>
+</header>
+
+<div id="setup-layer">
+    <div class="panel">
+        <div class="panel-head">戰情中心</div>
+        <div class="panel-body">
+            <div style="font-size:0.8rem; color:var(--muted); margin-bottom:5px;">C組排名</div>
+            <table class="rank-table">
+                <thead><tr><th>隊伍</th><th>W-L</th><th>失分率</th></tr></thead>
+                <tbody id="standings-body"></tbody>
+            </table>
+            <div style="font-size:0.8rem; color:var(--muted); margin-bottom:5px; margin-top:10px;">賽程表</div>
+            <div class="schedule-list" id="schedule-list"></div>
+            <div id="next-opp-info" style="margin-top:10px; padding:10px; background:#111; border-left:3px solid var(--accent); font-size:0.85rem; display:none;"></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="roster-container">
+            <div id="pitcher-section" class="pitcher-section">
+                <div class="sec-header" onclick="togglePitcher()">
+                    <span id="pitcher-header-text">投手名單 (16人)</span>
+                    <span style="font-size:0.8rem; color:var(--primary)">▼</span>
+                </div>
+                <div class="grid-area">
+                    <div id="pitcher-list" class="common-grid" style="grid-template-columns: repeat(4, 1fr);"></div>
+                </div>
+            </div>
+            
+            <div class="batter-section">
+                <div class="sec-header" style="cursor:default; background:rgba(0,0,0,0.2);">
+                    <span>野手名單 (14人)</span>
+                    <span style="font-size:0.75rem; color:#666;">點擊選取/取消</span>
+                </div>
+                <div class="grid-area" style="flex:1;">
+                    <div id="roster-pool" class="common-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-head">攻守名單</div>
+        <div class="panel-body" style="padding:10px;">
+            <div id="lineup-slots" class="lineup-list"></div>
+        </div>
+        <div class="action-area">
+            <div id="err-msg" style="color:var(--danger); font-size:0.85rem; margin-bottom:8px; height:18px;"></div>
+            <button id="start-btn" class="go-btn" onclick="startGame()" disabled>確認陣容並開賽</button>
+        </div>
+    </div>
+</div>
+
+<div id="game-layer">
+    <div class="top-bar">
+        <span class="team-label" style="color:var(--danger)" id="ui-opp-name">OPP</span>
+        <div class="score-box" id="s-opp">0</div>
+        <div style="text-align:center;">
+            <div id="s-inn" style="color:#fff; font-weight:bold; font-size:1.2rem;">1局上</div>
+        </div>
+        <div class="score-box" id="s-tpe">0</div>
+        <span class="team-label" style="color:var(--primary)">TPE</span>
+    </div>
+
+    <div id="stadium-layout">
+        <div class="side-col">
+            <div class="side-head" id="opp-head-bar" style="color:var(--danger)">對手陣容</div>
+            <ul id="list-opp" class="roster-list"></ul>
+            <div style="padding:10px; background:#111; color:#aaa; font-size:0.85rem; text-align:center;">先發: <span id="ui-opp-sp" style="color:white;">--</span></div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; height:100%;">
+            <div class="field-area">
+                <div id="b1" class="base"></div>
+                <div id="b2" class="base"></div>
+                <div id="b3" class="base"></div>
+                
+                <div class="count-board">
+                    <div class="light-group">
+                        <span class="count-label">B</span>
+                        <div class="light-row">
+                            <div id="b-1" class="bulb"></div><div id="b-2" class="bulb"></div><div id="b-3" class="bulb"></div>
+                        </div>
+                    </div>
+                    <div class="light-group">
+                        <span class="count-label">S</span>
+                        <div class="light-row">
+                            <div id="s-1" class="bulb"></div><div id="s-2" class="bulb"></div>
+                        </div>
+                    </div>
+                    <div class="light-group">
+                        <span class="count-label">O</span>
+                        <div class="light-row">
+                            <div id="o-1" class="bulb"></div><div id="o-2" class="bulb"></div>
+                        </div>
+                    </div>
+                    <div class="pitch-count-display" id="ui-pc">PC:0</div>
+                </div>
+
+                <div class="duel-hud">
+                    <div class="hud-card">
+                        <div class="hud-lbl">PITCHER</div>
+                        <div class="hud-val" id="hud-p">--</div>
+                        <div class="hud-stat" id="hud-p-stat">--</div>
+                    </div>
+                    <div class="hud-card">
+                        <div class="hud-lbl">BATTER</div>
+                        <div class="hud-val" id="hud-b">--</div>
+                        <div class="hud-stat" id="hud-b-stat">--</div>
+                        <div class="last-ab" id="hud-last-ab"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="log-area" id="game-log"></div>
+            <div class="controls" id="controls"></div>
+        </div>
+
+        <div class="side-col">
+            <div class="side-head" style="color:var(--primary)">中華隊陣容</div>
+            <ul id="list-tpe" class="roster-list"></ul>
+            <div style="padding:10px; background:#111; color:#aaa; font-size:0.85rem; text-align:center;">先發: <span id="ui-tpe-sp" style="color:white;">--</span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- Data ---
+const TEAMS = {
+    TPE: { name: "中華隊", color:"#38bdf8", w:0, l:0, ra:0, ip:0 },
+    AUS: { name: "澳洲", color:"#00695c", w:0, l:0, ra:0, ip:0 },
+    JPN: { name: "日本", color:"#1a237e", w:0, l:0, ra:0, ip:0 },
+    CZE: { name: "捷克", color:"#b71c1c", w:0, l:0, ra:0, ip:0 },
+    KOR: { name: "韓國", color:"#0d47a1", w:0, l:0, ra:0, ip:0 }
+};
+
+const SCHEDULE = [
+    { day: "3/5", games: [ {h:"TPE", a:"AUS"}, {h:"JPN", a:"CZE"} ] },
+    { day: "3/6", games: [ {h:"TPE", a:"JPN"}, {h:"KOR", a:"AUS"} ] },
+    { day: "3/7", games: [ {h:"TPE", a:"CZE"}, {h:"KOR", a:"JPN"} ] },
+    { day: "3/8", games: [ {h:"TPE", a:"KOR"}, {h:"AUS", a:"CZE"} ] }
+];
+
+const PITCHERS = [
+    {id:"p1", name:"林昱珉", fb:91, brk:96, role:"SP", fatigue:0}, {id:"p2", name:"林維恩", fb:90, brk:88, role:"SP", fatigue:0},
+    {id:"p3", name:"莊陳仲敖", fb:94, brk:85, role:"SP", fatigue:0}, {id:"p4", name:"陳柏毓", fb:92, brk:86, role:"RP", fatigue:0},
+    {id:"p5", name:"沙子宸", fb:90, brk:80, role:"RP", fatigue:0}, {id:"p6", name:"古林睿煬", fb:96, brk:88, role:"SP", fatigue:0},
+    {id:"p7", name:"孫易磊", fb:95, brk:89, role:"RP", fatigue:0}, {id:"p8", name:"徐若熙", fb:97, brk:92, role:"SP", fatigue:0},
+    {id:"p9", name:"張峻瑋", fb:94, brk:78, role:"RP", fatigue:0}, {id:"p10", name:"陳冠宇", fb:89, brk:84, role:"RP", fatigue:0},
+    {id:"p11", name:"張 奕", fb:93, brk:82, role:"RP", fatigue:0}, {id:"p12", name:"胡智爲", fb:91, brk:83, role:"RP", fatigue:0},
+    {id:"p13", name:"曾峻岳", fb:95, brk:80, role:"CL", fatigue:0}, {id:"p14", name:"林詩翔", fb:91, brk:75, role:"RP", fatigue:0},
+    {id:"p15", name:"鄭浩均", fb:93, brk:82, role:"RP", fatigue:0}, {id:"p16", name:"林凱威", fb:92, brk:85, role:"RP", fatigue:0}
+];
+
+const BATTERS = [
+    {id:"c1", name:"林家正", group:"捕手", pos:["C","1B","DH"], con:75, pow:70},
+    {id:"c2", name:"蔣少宏", group:"捕手", pos:["C","DH"], con:70, pow:65},
+    {id:"c3", name:"吉力吉撈", group:"捕手", pos:["DH","C"], con:80, pow:93},
+    {id:"if1", name:"吳念庭", group:"內野手", pos:["1B","2B","3B","DH"], con:85, pow:75},
+    {id:"if2", name:"張育成", group:"內野手", pos:["1B","2B","3B","SS","DH"], con:88, pow:95},
+    {id:"if3", name:"鄭宗哲", group:"內野手", pos:["SS","2B","DH"], con:90, pow:75},
+    {id:"if4", name:"江坤宇", group:"內野手", pos:["SS","DH"], con:82, pow:60},
+    {id:"if5", name:"李灝宇", group:"內野手", pos:["2B","3B","DH"], con:86, pow:89},
+    {id:"if6", name:"Long", group:"內野手", pos:["1B","3B","DH"], con:85, pow:92},
+    {id:"ut1", name:"林子偉", group:"內野手", pos:["UT","OF","2B","SS"], con:78, pow:75},
+    {id:"of1", name:"陳傑憲", group:"外野手", pos:["CF","LF","RF","DH"], con:93, pow:65},
+    {id:"of2", name:"陳晨威", group:"外野手", pos:["CF","LF","RF"], con:80, pow:60},
+    {id:"of3", name:"林安可", group:"外野手", pos:["RF","DH"], con:82, pow:90},
+    {id:"of4", name:"Fairchild", group:"外野手", pos:["CF","LF","RF"], con:85, pow:88}
+];
+
+const OPP_DATA = {
+    "AUS": { name:"澳洲", sp:"Saupold", lineup:[
+        {n:"Bazzana",p:"2B"}, {n:"Whitefield",p:"CF"}, {n:"Mead",p:"3B"}, {n:"Wingrove",p:"1B"}, 
+        {n:"Glendinning",p:"SS"}, {n:"George",p:"DH"}, {n:"Hall",p:"C"}, {n:"Bojarski",p:"RF"}, {n:"Kennelly",p:"LF"}
+    ]},
+    "JPN": { name:"日本", sp:"山本由伸", lineup:[
+        {n:"近藤健介",p:"RF"}, {n:"大谷翔平",p:"DH"}, {n:"鈴木誠也",p:"LF"}, {n:"村上宗隆",p:"3B"}, 
+        {n:"吉田正尚",p:"LF"}, {n:"岡本和真",p:"1B"}, {n:"牧秀悟",p:"2B"}, {n:"源田壯亮",p:"SS"}, {n:"中村悠平",p:"C"}
+    ]},
+    "CZE": { name:"捷克", sp:"Satoria", lineup:[
+        {n:"Mensik",p:"SS"}, {n:"Vavra",p:"DH"}, {n:"Chlup",p:"RF"}, {n:"Cervenka",p:"C"}, 
+        {n:"Muzik",p:"1B"}, {n:"Escala",p:"2B"}, {n:"Minarik",p:"3B"}, {n:"Smola",p:"LF"}, {n:"Dubovy",p:"CF"}
+    ]},
+    "KOR": { name:"韓國", sp:"Dunning", lineup:[
+        {n:"李政厚",p:"CF"}, {n:"金慧成",p:"2B"}, {n:"金倒永",p:"3B"}, {n:"文保景",p:"1B"}, 
+        {n:"Whitcomb",p:"SS"}, {n:"Jones",p:"RF"}, {n:"朴東原",p:"C"}, {n:"崔元準",p:"DH"}, {n:"洪昌基",p:"LF"}
+    ]}
+};
+
+let sys = { dayIdx: 0, spId: null, lineup: Array(9).fill(null), gameLog: [], history: {} };
+let match = {};
+
+window.onload = () => {
+    updateStandings();
+    renderPitchers();
+    renderPool();
+    renderLineup();
+    checkSetup();
+};
+
+function togglePitcher() {
+    const sec = document.getElementById('pitcher-section');
+    const icon = document.getElementById('pitcher-header-text');
+    sec.classList.toggle('collapsed');
+}
+
+function updateStandings() {
+    let list = Object.keys(TEAMS).map(k=>({id:k, ...TEAMS[k]}));
+    list.sort((a,b) => b.w - a.w);
+
+    document.getElementById('standings-body').innerHTML = list.map(t => `
+        <tr><td style="color:${t.id==='TPE'?'#38bdf8':'#fff'}">${t.name}</td><td>${t.w}-${t.l}</td><td>${t.ip===0?'-':(t.ra/t.ip).toFixed(2)}</td></tr>
+    `).join('');
+
+    const sl = document.getElementById('schedule-list');
+    const prev = document.getElementById('next-opp-info');
+    sl.innerHTML = "";
+    prev.style.display = 'none';
+
+    sys.gameLog.forEach(l => {
+        sl.innerHTML += `<div class="match-card done"><span>${l.day}</span><span>${l.res}</span></div>`;
+    });
+    
+    let foundNext = false;
+    for(let i=sys.dayIdx; i<SCHEDULE.length; i++) {
+        let today = SCHEDULE[i];
+        let tpeGame = today.games.find(g=>g.h==='TPE'||g.a==='TPE');
+        if(tpeGame) {
+            let opp = tpeGame.h==='TPE'?tpeGame.a:tpeGame.h;
+            let active = (!foundNext) ? 'active' : '';
+            sl.innerHTML += `<div class="match-card ${active}"><span>${today.day} (vs ${opp})</span>${active?'<strong>NEXT</strong>':''}</div>`;
+            
+            if(!foundNext) {
+                foundNext = true;
+                let od = OPP_DATA[opp];
+                prev.style.display = 'block';
+                prev.innerHTML = `<div>對手: <b style="color:var(--primary)">${od.name}</b></div><div>預計先發: <b>${od.sp}</b></div>`;
+            }
+        }
+    }
+}
+
+function renderPitchers() {
+    const el = document.getElementById('pitcher-list');
+    el.innerHTML = "";
+    PITCHERS.forEach(p => {
+        let d = document.createElement('div');
+        d.className = `u-card p-card ${p.fatigue>0?'disabled':''} ${sys.spId===p.id?'selected':''}`;
+        d.innerHTML = `
+            ${p.fatigue>0 ? `<div style="position:absolute;inset:0;background:rgba(0,0,0,0.8);color:red;display:flex;justify-content:center;align-items:center;font-weight:bold;">休${p.fatigue}</div>` : ''}
+            <div class="uc-top"><span class="uc-pos pos-p">SP</span></div>
+            <span class="uc-name">${p.name}</span>
+            <div class="uc-stat">直:<b>${p.fb}</b> 變:<b>${p.brk}</b></div>
+        `;
+        if(p.fatigue===0) d.onclick = () => {
+            sys.spId = p.id;
+            document.getElementById('pitcher-section').classList.add('collapsed');
+            document.getElementById('pitcher-header-text').innerText = `已選先發: ${p.name}`;
+            renderPitchers();
+            checkSetup();
+        };
+        el.appendChild(d);
+    });
+}
+
+function renderPool() {
+    const el = document.getElementById('roster-pool');
+    el.innerHTML = "";
+    const picked = sys.lineup.filter(x=>x).map(x=>x.player.id);
+    
+    BATTERS.forEach(b => {
+        let isPicked = picked.includes(b.id);
+        let d = document.createElement('div');
+        d.className = `u-card b-card ${isPicked?'picked':''}`;
+        
+        let pCls = b.group==='內野手'?'inf':(b.group==='外野手'?'out':'cat');
+        d.innerHTML = `
+            <div class="uc-top"><span class="uc-pos pos-${pCls}">${b.group.substring(0,1)}</span></div>
+            <span class="uc-name">${b.name}</span>
+            <div class="uc-stat">打:<b>${b.con}</b> 力:<b>${b.pow}</b></div>
+        `;
+        d.onclick = () => toggleBatter(b);
+        el.appendChild(d);
+    });
+}
+
+function toggleBatter(b) {
+    let existIdx = sys.lineup.findIndex(x => x && x.player.id === b.id);
+    if(existIdx !== -1) {
+        sys.lineup[existIdx] = null;
+    } else {
+        let empty = sys.lineup.findIndex(x => x === null);
+        if(empty !== -1) sys.lineup[empty] = { player:b, pos:b.pos[0] };
+    }
+    renderPool();
+    renderLineup();
+    checkSetup();
+}
+
+function renderLineup() {
+    const el = document.getElementById('lineup-slots');
+    el.innerHTML = "";
+    sys.lineup.forEach((slot,i) => {
+        let d = document.createElement('div');
+        d.className = `slot ${slot?'filled':'empty'}`;
+        if(!slot) {
+            d.innerHTML = `<span class="slot-idx">${i+1}</span><span style="color:#555;font-style:italic;">--</span>`;
+        } else {
+            let opts = slot.player.pos.map(p=>`<option value="${p}" ${slot.pos===p?'selected':''}>${p}</option>`).join('');
+            d.innerHTML = `
+                <span class="slot-idx" style="color:var(--primary)">${i+1}</span>
+                <div class="slot-info">
+                    <span class="slot-name" onclick="toggleBatter(sys.lineup[${i}].player)">${slot.player.name}</span>
+                    <select class="pos-sel" onclick="event.stopPropagation()" onchange="sys.lineup[${i}].pos=this.value">${opts}</select>
+                </div>
+            `;
+        }
+        el.appendChild(d);
+    });
+}
+
+function checkSetup() {
+    const btn = document.getElementById('start-btn');
+    const msg = document.getElementById('err-msg');
+    let err=[];
+    if(!sys.spId) err.push("未選投手");
+    if(sys.lineup.includes(null)) err.push("打線未滿");
+    
+    if(err.length>0) { btn.disabled=true; msg.innerText="缺少: "+err.join("、"); }
+    else { btn.disabled=false; msg.innerText=""; }
+}
+
+function startGame() {
+    const today = SCHEDULE[sys.dayIdx];
+    if(!today) return alert("賽程結束");
+    
+    const tpeGame = today.games.find(g=>g.h==='TPE'||g.a==='TPE');
+    const oppKey = tpeGame.h==='TPE'?tpeGame.a:tpeGame.h;
+    const oppData = OPP_DATA[oppKey];
+
+    match = {
+        vsKey: oppKey,
+        tpeSP: PITCHERS.find(p=>p.id===sys.spId),
+        oppSP: { name:oppData.sp, fb:90, brk:90 },
+        tpeLineup: sys.lineup.map(x=>({...x.player, displayPos:x.pos, history:[]})),
+        oppLineup: oppData.lineup.map(p=>({
+            name:p.n, displayPos:p.p, 
+            con:75+Math.random()*15, pow:70+Math.random()*15, history:[]
+        })),
+        inning: 1, isTop: true, outs: 0, runners: [0,0,0],
+        score: {t:0, o:0}, batIdx: {t:0, o:0},
+        pitchCount: 0, count: {b:0, s:0}
+    };
+
+    // Apply Color
+    document.documentElement.style.setProperty('--opp-color', TEAMS[oppKey].color);
+    document.getElementById('ui-opp-name').innerText = oppData.name;
+
+    document.getElementById('setup-layer').style.display='none';
+    document.getElementById('game-layer').style.display='flex';
+    document.getElementById('date-disp').innerText = today.day;
+    document.getElementById('ui-tpe-sp').innerText = match.tpeSP.name;
+    document.getElementById('ui-opp-sp').innerText = match.oppSP.name;
+
+    const gLog = document.getElementById('game-log');
+    gLog.innerHTML = "";
+    log("比賽開始！");
+    
+    updateGameUI();
+    newAtBat();
+}
+
+function newAtBat() {
+    match.count = { b: Math.floor(Math.random()*4), s: Math.floor(Math.random()*3) }; 
+    updateHUD();
+}
+
+function sim(st) {
+    if(match.isTop) match.pitchCount++;
+    
+    let isT = match.isTop;
+    let pit = isT ? match.tpeSP : match.oppSP;
+    let batIdx = isT ? match.batIdx.o : match.batIdx.t;
+    let bat = isT ? match.oppLineup[batIdx] : match.tpeLineup[batIdx];
+    
+    let roll = Math.random()*100;
+    let res="", type="", resShort="";
+    
+    if(Math.random() < match.count.b*0.1) {
+        res="四壞球保送"; type="log-new"; resShort="BB"; advance(1);
+    } else {
+        let thresh = 65; 
+        if(st==='contact') thresh-=15; 
+        if(st==='power') thresh+=10;
+        
+        if(roll < thresh) {
+            match.outs++; 
+            let outsTypes = ["游擊滾地","二壘滾地","三壘滾地","投前滾地","中外野飛球","右外野飛球","左外野飛球","揮空三振","見振"];
+            res = outsTypes[Math.floor(Math.random()*outsTypes.length)];
+            type="log-out"; resShort= res.includes("振") ? "SO" : (res.includes("飛球") ? "FO" : "GO");
+        } else {
+            let b=1;
+            if(st==='power' && Math.random()>0.7) b=4; 
+            else if(Math.random()>0.85) b=2;
+            
+            if(b===4) { res="轟出大牆！全壘打"; resShort="HR"; }
+            else if(b===2) { res="深遠二壘安打"; resShort="2B"; }
+            else { res="巧妙安打"; resShort="1B"; }
+            type = "log-new";
+            advance(b);
+        }
+    }
+    
+    bat.history.push(resShort);
+    log(`${pit.name} vs ${bat.name}: ${res}`, type);
+
+    if(match.outs >= 3) endInning();
+    else {
+        if(res.includes("出局") || res.includes("振")) {
+            if(isT) match.batIdx.o=(match.batIdx.o+1)%9; else match.batIdx.t=(match.batIdx.t+1)%9;
+            newAtBat();
+        } else {
+            if(isT) match.batIdx.o=(match.batIdx.o+1)%9; else match.batIdx.t=(match.batIdx.t+1)%9;
+            newAtBat();
+        }
+    }
+    updateGameUI();
+}
+
+function advance(bases) {
+    let r=0; let next=[0,0,0];
+    if(bases===4) { r = match.runners.filter(x=>x).length+1; next=[0,0,0]; }
+    else if(bases===1 && match.runners[0]===0) { 
+        if(match.runners[2]) r++;
+        if(match.runners[1]) next[2]=1;
+        next[0]=1;
+    } else { 
+        for(let i=2;i>=0;i--) if(match.runners[i]) { if(i+bases>=3)r++; else next[i+bases]=1; }
+        next[bases-1]=1;
+    }
+    match.runners=next;
+    if(r>0) {
+        if(match.isTop) match.score.o+=r; else match.score.t+=r;
+        log(`>>> 攻下 ${r} 分`, "log-new");
+    }
+}
+
+function endInning() {
+    log(`--- ${match.inning}局結束 ---`);
+    match.outs=0; match.runners=[0,0,0];
+    
+    let diff = Math.abs(match.score.t - match.score.o);
+    if(match.inning>=5 && diff>=15) return endGame();
+    if(match.inning>=7 && diff>=10) return endGame();
+
+    if(!match.isTop) {
+        if(match.inning>=9 && match.score.t !== match.score.o) return endGame();
+        match.inning++;
+    }
+    match.isTop = !match.isTop;
+    
+    if(match.inning>=10) { match.runners=[0,1,0]; log("突破僵局：二壘有人"); }
+    newAtBat();
+}
+
+function endGame() {
+    alert(`比賽結束！ TPE ${match.score.t} - ${match.score.o} ${match.vsKey}`);
+    
+    let pc = match.pitchCount;
+    let rest = 0;
+    if(pc>=50) rest=4; else if(pc>=30) rest=1;
+    
+    let spIdx = PITCHERS.findIndex(p=>p.id===match.tpeSP.id);
+    if(spIdx!==-1) PITCHERS[spIdx].fatigue = rest;
+    PITCHERS.forEach((p,i)=>{ if(i!==spIdx && p.fatigue>0) p.fatigue--; });
+    
+    let w = match.score.t > match.score.o ? 'TPE' : match.vsKey;
+    let l = match.score.t > match.score.o ? match.vsKey : 'TPE';
+    TEAMS[w].w++; TEAMS[l].l++;
+    TEAMS['TPE'].ra += match.score.o; TEAMS['TPE'].ip += match.inning;
+    TEAMS[match.vsKey].ra += match.score.t; TEAMS[match.vsKey].ip += match.inning;
+
+    sys.dayIdx++;
+    sys.spId = null; 
+    
+    document.getElementById('game-layer').style.display='none';
+    document.getElementById('setup-layer').style.display='grid';
+    
+    document.getElementById('pitcher-section').classList.remove('collapsed');
+    document.getElementById('pitcher-header-text').innerText = "投手名單 (16人)";
+    
+    updateStandings(); renderPitchers(); renderPool(); renderLineup(); checkSetup();
+}
+
+function updateHUD() {
+    document.getElementById('ui-pc').innerText = `PC: ${match.pitchCount}`;
+    for(let i=1; i<=3; i++) document.getElementById(`b-${i}`).className = i<=match.count.b ? 'bulb green' : 'bulb';
+    for(let i=1; i<=2; i++) document.getElementById(`s-${i}`).className = i<=match.count.s ? 'bulb yellow' : 'bulb';
+    for(let i=1; i<=2; i++) document.getElementById(`o-${i}`).className = i<=match.outs ? 'bulb red' : 'bulb';
+}
+
+function updateGameUI() {
+    document.getElementById('s-opp').innerText = match.score.o;
+    document.getElementById('s-tpe').innerText = match.score.t;
+    document.getElementById('s-inn').innerText = `${match.inning}局${match.isTop?'上':'下'}`;
+
+    renderList('list-opp', match.oppLineup, match.isTop?match.batIdx.o:-1);
+    renderList('list-tpe', match.tpeLineup, !match.isTop?match.batIdx.t:-1);
+
+    for(let i=0;i<3;i++) document.getElementById(`b${i+1}`).className = match.runners[i]?'base on':'base';
+
+    let p = match.isTop ? match.tpeSP : match.oppSP;
+    let b = match.isTop ? match.oppLineup[match.batIdx.o] : match.tpeLineup[match.batIdx.t];
+    document.getElementById('hud-p').innerText = p.name;
+    document.getElementById('hud-p-stat').innerText = `FB:${p.fb||90} BRK:${p.brk||85}`;
+    document.getElementById('hud-b').innerText = b.name;
+    document.getElementById('hud-b-stat').innerText = `CON:${Math.floor(b.con)} POW:${Math.floor(b.pow)}`;
+    document.getElementById('hud-last-ab').innerText = b.history.length > 0 ? b.history.join(" / ") : "FIRST AB";
+
+    const c = document.getElementById('controls');
+    c.innerHTML = "";
+    if(match.isTop) {
+        c.innerHTML = `<button class="c-btn" onclick="sim('fb')">直球對決 <strong>FB:${p.fb}</strong></button>
+                       <button class="c-btn" onclick="sim('brk')">變化引誘 <strong>BRK:${p.brk}</strong></button>`;
+    } else {
+        c.innerHTML = `<button class="c-btn" onclick="sim('contact')">確實擊球 <strong>CON:${Math.floor(b.con)}</strong></button>
+                       <button class="c-btn" onclick="sim('power')">強力揮擊 <strong>POW:${Math.floor(b.pow)}</strong></button>`;
+    }
+    updateHUD();
+}
+
+function renderList(id, list, active) {
+    document.getElementById(id).innerHTML = list.map((p,i)=>`
+        <li class="r-item ${i===active?'active':''}">
+            <span>${i+1}.${p.name}</span> 
+            <span style="font-size:0.75rem; color:#888;">${p.displayPos||'-'}</span>
+        </li>`).join('');
+}
+
+function log(msg, cls) {
+    const b = document.getElementById('game-log');
+    let d = document.createElement('div');
+    d.className = `log-entry ${cls||''}`;
+    d.innerText = msg;
+    b.prepend(d);
+}
+</script>
+</body>
+</html>
